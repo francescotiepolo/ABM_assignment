@@ -14,6 +14,7 @@ model:
 analysis:
     basic_run.py  
     → Runs a basic simulation of the model
+    → Here you can find a description of every parameter
 
     avalanches.py  
     → Analyzes avalanche events in the simulation
