@@ -17,10 +17,10 @@ def compute_avalanches(series, delta=0.05):
 
 # 1. Parameters for avalanche analysis
 T = 1000                    # number of time steps
-seeds = range(0, 5)         # multiple runs for statistics
+seeds = range(0, 10)         # multiple runs for statistics
 delta = 0.01                # threshold for defining an avalanche
 
-N = 200
+N = 150
 L = int(np.ceil(np.sqrt(N)))
 
 # Parameter set

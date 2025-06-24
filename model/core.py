@@ -5,6 +5,7 @@ from mesa.datacollection import DataCollector
 import networkx as nx
 import numpy as np
 from .agents import Household, Bin
+from .functions import assign_bin
 
 class RecyclingModel(Model):
     """
@@ -51,12 +52,12 @@ class RecyclingModel(Model):
         self.bins = {}     
 
         # 3a. Place bins on a 3×3 subgrid within L×L
-        bin_positions = [(x, y) for x in [2, 5, 8] for y in [2, 5, 8]]
-        for m, (x_m, y_m) in enumerate(bin_positions):
+        self.bin_positions = np.array([(x, y) for x in [2, 5, 8] for y in [2, 5, 8]], dtype=np.float64)
+        for m, (x_m, y_m) in enumerate(self.bin_positions):
             bin_id = N + m 
-            bin_agent = Bin(unique_id=bin_id, model=self, K_m=K_default, pos=(x_m, y_m))
+            bin_agent = Bin(unique_id=bin_id, model=self, K_m=K_default, pos=(int(x_m), int(y_m)))
             self.bins[m] = bin_agent
-            self.grid.place_agent(bin_agent, (x_m, y_m))
+            self.grid.place_agent(bin_agent, (int(x_m), int(y_m)))
             self.schedule.add(bin_agent)
 
         # 3b. Initialize household attributes
@@ -71,11 +72,7 @@ class RecyclingModel(Model):
         # Compute assigned bin and base cost C0 for each household
         for i in range(N):
             x_i, y_i = coords[i]
-            # find nearest bin by Euclidean distance
-            dists = [np.linalg.norm(np.array((x_i, y_i)) - np.array(self.bins[m].pos))
-                     for m in self.bins]
-            bin_id = int(np.argmin(dists))
-            dist_to_bin = dists[bin_id]
+            bin_id, dist_to_bin = assign_bin(x_i, y_i, self.bin_positions)
             C0_i = c + kappa * dist_to_bin
             if i in champions:
                 C0_i = 0.0  # champion has no base cost

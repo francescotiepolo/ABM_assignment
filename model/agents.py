@@ -1,12 +1,7 @@
 from mesa import Agent
 from collections import deque
 import numpy as np
-import math
-
-def weighted_average(history, decay=0.8):
-    weights = [decay**i for i in range(len(history)-1, -1, -1)]
-    weights = np.array(weights) / sum(weights)
-    return np.sum(np.array(history) * weights)
+from .functions import compute_choice, weighted_average
 
 class Household(Agent):
     """
@@ -41,22 +36,13 @@ class Household(Agent):
 
         # Use average of history
         if self.rho_history:
-            self.hat_rho = weighted_average(self.rho_history, decay=self.decay)
+            self.hat_rho = weighted_average(np.array(self.rho_history), decay=self.decay)
         if self.deltaC_history:
-            self.hat_deltaC = weighted_average(self.deltaC_history, decay=self.decay)
+            self.hat_deltaC = weighted_average(np.array(self.deltaC_history), decay=self.decay)
         
-        U_R = self.P - (self.C0 + self.hat_deltaC) + self.alpha * self.hat_rho
-        U_N = - self.alpha * self.hat_rho
-        if self.logit:
-            # compute probabilities
-            m = max(U_R, U_N)
-            exp_R = math.exp((U_R - m) * self.lambda_param)
-            exp_N = math.exp((U_N - m) * self.lambda_param)
-            p_R = exp_R / (exp_R + exp_N)
-            # sample
-            self.s = (self.local_random.random() < p_R)
-        else:
-            self.s = True if (U_R > U_N) else False
+        rng_val = self.local_random.random()
+        self.s = compute_choice(self.P, self.C0, self.hat_deltaC, self.alpha, self.hat_rho, self.logit, self.lambda_param, rng_val)
+
 
     def advance(self):
         """
