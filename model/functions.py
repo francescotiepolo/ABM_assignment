@@ -2,7 +2,7 @@ import math
 import numpy as np
 from numba import njit
 
-@njit
+@njit(cache=True)
 def weighted_average(history, decay=0.8):
     n = len(history)
     weights = np.empty(n)
@@ -11,7 +11,7 @@ def weighted_average(history, decay=0.8):
     weights /= weights.sum()
     return (history * weights).sum()
 
-@njit
+@njit(cache=True)
 def compute_choice(P, C0, hat_deltaC, alpha, hat_rho, logit, lambda_param, rng_val):
     U_R = P - (C0 + hat_deltaC) + alpha * hat_rho
     U_N = - alpha * hat_rho
@@ -25,14 +25,23 @@ def compute_choice(P, C0, hat_deltaC, alpha, hat_rho, logit, lambda_param, rng_v
     else:
         return U_R > U_N
     
-@njit
+@njit(cache=True)
 def assign_bin(x_i, y_i, bin_positions):
     min_dist = 1e10
     bin_id = -1
     for m in range(len(bin_positions)):
         x_m, y_m = bin_positions[m, 0], bin_positions[m, 1]
-        dist = math.sqrt((x_i - x_m)**2 + (y_i - y_m)**2)
+        dist = (x_i-x_m)**2 + (y_i-y_m)**2
         if dist < min_dist:
             min_dist = dist
             bin_id = m
     return bin_id, min_dist
+
+@njit(cache=True)
+def compute_deltas(bin_ids, Qm, Km, delt):
+    n = bin_ids.shape[0]
+    out = np.empty(n)
+    for i in range(n):
+        overload = Qm[bin_ids[i]] - Km[bin_ids[i]]
+        out[i] = delt * (overload if overload > 0 else 0)
+    return out

@@ -5,7 +5,7 @@ from mesa.datacollection import DataCollector
 import networkx as nx
 import numpy as np
 from .agents import Household, Bin
-from .functions import assign_bin
+from .functions import assign_bin, compute_deltas
 
 class RecyclingModel(Model):
     """
@@ -129,12 +129,15 @@ class RecyclingModel(Model):
         self.schedule.step()
 
         # 3. Update surcharges and prepare for next round
-        for i, agent in self.households.items():
+        bin_ids = np.array([agent.bin_id for agent in self.households.values()], dtype=np.int32)
+        Qm      = np.array([b.Q_m    for b in self.bins.values()],        dtype=np.int32)
+        Km      = np.array([b.K_m    for b in self.bins.values()],        dtype=np.int32)
+
+        deltas = compute_deltas(bin_ids, Qm, Km, self.delta)
+
+        for (i, agent), dC in zip(self.households.items(), deltas):
             # Realized rho was set in agent.rho during advance()
             # Surcharge for next period:
-            bin_agent = self.bins[agent.bin_id]
-            overload = max(0, bin_agent.Q_m - bin_agent.K_m)
-            agent.deltaC = self.delta * overload
-
+            agent.deltaC = dC
         # 4. Collect data
         self.datacollector.collect(self)
