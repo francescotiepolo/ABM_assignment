@@ -52,7 +52,7 @@ default_values = {
     'logit': True,                  # use logit choice model
     'lambda_param': 20,             # logit scaling parameter
     'activation': 'simultaneous',   # activation type
-    'decay': 0.8                   # decay factor for weighted average
+    'decay': 0.8                    # decay factor for weighted average
 }
 
 # OFAT Sensitivity 
@@ -62,7 +62,6 @@ samples_per_param = 20
 
 def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
     # Create model with single parameter value
-    # Set random seed if needed for reproducibility
     if seed is not None:
         np.random.seed(seed)
 
