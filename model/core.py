@@ -61,7 +61,7 @@ class RecyclingModel(Model):
         coords = coords[:N]
         P_vals = np.random.rand(N)
         num_champ = int(epsilon * N)
-        champions = self.random.choice(N, size=num_champ, replace=False)
+        champions = np.random.choice(N, size=num_champ, replace=False)
         for i in champions:
             P_vals[i] = 2.0  # high preference for eco‐champions
 
