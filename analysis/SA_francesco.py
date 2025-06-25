@@ -6,13 +6,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
 from joblib import Parallel, delayed
-from tqdm_joblib import tqdm_joblib
 from tqdm import tqdm
 import sys
 import os
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_root)
 from model.core import RecyclingModel
+
+# Set to True to use saved data for plotting, False to run new simulations
+USE_SAVED_DATA_OFAT = True
+USE_SAVED_DATA_SOBOL = False
 
 # Create output directory
 plot_dir = os.path.join(project_root, 'figures/SA')
@@ -23,14 +26,14 @@ problem = {
     'num_vars': 10,
     'names': ['M', 'delta', 'c', 'kappa', 'epsilon', 'alpha', 'K_default', 'memory_length', 'lambda_param', 'decay'],
     'bounds': [
-        [3, 20],           # M
+        [3, 40],           # M
         [0.1, 1.0],        # delta
         [0.1, 1.0],        # c
-        [0.01, 0.2],       # kappa
-        [0.01, 0.2],       # epsilon
+        [0.01, 1.0],       # kappa
+        [0.01, 1.0],       # epsilon
         [0.1, 1.0],        # alpha
-        [5, 20],           # K_default
-        [10, 200],         # memory_length
+        [1, 30],           # K_default
+        [1, 150],         # memory_length
         [1, 50],           # lambda_param
         [0.1, 1.0]         # decay
     ]
@@ -58,9 +61,9 @@ default_values = {
 int_params = {'memory_length'}
 
 # OFAT Sensitivity 
-replicates = 250
-max_steps = 100
-samples_per_param = 20
+replicates = 50
+max_steps = 300
+distinct_samples = 30
 
 def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
     # Create model with single parameter value
@@ -78,27 +81,34 @@ def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
 data_ofat = {}
 
 for i, var in enumerate(problem['names']):
-    values = np.linspace(*problem['bounds'][i], num=samples_per_param)
-    fixed_params = {k: v for k, v in default_values.items() if k != var}
+    filepath = os.path.join(data_dir, f"OFAT_{var}.csv")
 
-    all_dfs = []
-    for val in tqdm(values, desc=f"OFAT param {var}"):
-        if var in int_params:
-            val = int(val)
+    if USE_SAVED_DATA_OFAT and os.path.exists(filepath):
+        print(f"Loading saved data for {var}")
+        data_ofat[var] = pd.read_csv(filepath)
+    else:
+        print(f"Running OFAT for {var}")
+        values = np.linspace(*problem['bounds'][i], num=distinct_samples)
+        fixed_params = {k: v for k, v in default_values.items() if k != var}
 
-        # Parallelize over replicates
-        results = Parallel(n_jobs=-1)(
-            delayed(run_single_ofat_run)(var, val, max_steps, fixed_params, seed) for seed in range(replicates)
-        )
-        # Aggregate results into DataFrame
-        df_val = pd.DataFrame({
-            var: val,
-            "Recycle_Rate": results
-        })
-        all_dfs.append(df_val)
+        all_dfs = []
+        for val in tqdm(values, desc=f"OFAT param {var}"):
+            if var in int_params:
+                val = int(val)
 
-    data_ofat[var] = pd.concat(all_dfs, ignore_index=True)
-    data_ofat[var].to_csv(os.path.join(data_dir, f"OFAT_{var}.csv"), index=False)
+            # Parallelize over replicates
+            results = Parallel(n_jobs=-1)(
+                delayed(run_single_ofat_run)(var, val, max_steps, fixed_params, seed) for seed in range(replicates)
+            )
+            # Aggregate results into DataFrame
+            df_val = pd.DataFrame({
+                var: val,
+                "Recycle_Rate": results
+            })
+            all_dfs.append(df_val)
+
+        data_ofat[var] = pd.concat(all_dfs, ignore_index=True)
+        data_ofat[var].to_csv(os.path.join(data_dir, f"OFAT_{var}.csv"), index=False)
 
 
 def plot_param_var_conf(ax, df, var, param):
@@ -114,9 +124,19 @@ def plot_param_var_conf(ax, df, var, param):
 
 
 def plot_all_ofat(data, param):
-    f, axs = plt.subplots(3, figsize=(8, 12))
+    n_params = len(problem['names'])
+    n_cols = 2
+    n_rows = (n_params + n_cols - 1) // n_cols
+
+    f, axs = plt.subplots(n_rows, n_cols, figsize=(12, 4 * n_rows))
+    axs = axs.flatten()
+
     for i, var in enumerate(problem['names']):
         plot_param_var_conf(axs[i], data[var], var, param)
+
+    for j in range(i + 1, len(axs)):
+        f.delaxes(axs[j])
+
     plt.tight_layout()
     plt.savefig(os.path.join(plot_dir, f"OFAT_{param}.png"))
     plt.close()
@@ -126,43 +146,48 @@ plot_all_ofat(data_ofat, "Recycle_Rate")
 
 # Sobol
 
-D = len(problem['names'])
-distinct_samples = 128
-# Compute number of replicates to hit ~5000 runs
-target_total_runs = 5000
-replicates = max(1, target_total_runs // (distinct_samples * (D + 2)))
+sobol_path = os.path.join(data_dir, 'sobol_data.csv')
 
-print(f"Using {distinct_samples} distinct samples and {replicates} replicates")
-print(f"Total runs: {distinct_samples * (D + 2) * replicates}")
+if USE_SAVED_DATA_SOBOL and os.path.exists(sobol_path):
+    print("Loading saved Sobol data")
+    data_sobol = pd.read_csv(sobol_path)
+else:
+    print("Running Sobol sensitivity analysis")
+    D = problem['num_vars']
+    distinct_samples = 512 # Must be a power of 2 for convergence
+    replicates = 50
 
-data_sobol = pd.DataFrame(columns=problem['names'] + ["Recycle_Rate", "Run"])
+    print(f"Using {distinct_samples} distinct samples and {replicates} replicates")
+    print(f"Number of distinct results: {distinct_samples * (D + 2)}")
 
-def run_model(run_index, vals):
-    var_dict = {k: int(v) if k in int_params else v for k, v in zip(problem['names'], vals)}
-    model = RecyclingModel(**var_dict)
-    for _ in range(max_steps):
-        model.step()
-    recycle_rate = np.mean([h.s for h in model.households.values()])
-    row = dict(zip(problem['names'], vals))
-    row.update({"Recycle_Rate": recycle_rate, "Run": run_index})
-    return row
+    data_sobol = pd.DataFrame(columns=problem['names'] + ["Recycle_Rate", "Run"])
 
-param_values = saltelli.sample(problem, distinct_samples, calc_second_order=False)
-total_runs = replicates * len(param_values)
+    def run_model(run_index, vals):
+        var_dict = {k: int(v) if k in int_params else v for k, v in zip(problem['names'], vals)}
+        model = RecyclingModel(**var_dict)
+        for _ in range(max_steps):
+            model.step()
+        recycle_rate = np.mean([h.s for h in model.households.values()])
+        row = dict(zip(problem['names'], vals))
+        row.update({"Recycle_Rate": recycle_rate, "Run": run_index})
+        return row
 
-run_inputs = [
-    (r * len(param_values) + i, vals)
-    for r in range(replicates)
-    for i, vals in enumerate(param_values)
-]
+    param_values = saltelli.sample(problem, distinct_samples, calc_second_order=False)
+    total_runs = replicates * len(param_values)
 
-results = Parallel(n_jobs=-1)(  
-    delayed(run_model)(run_index, vals)
-    for run_index, vals in tqdm(run_inputs, desc="Running simulations")
-)
+    run_inputs = [
+        (r * len(param_values) + i, vals)
+        for r in range(replicates)
+        for i, vals in enumerate(param_values)
+    ]
 
-data_sobol = pd.DataFrame(results)
-data_sobol.to_csv(os.path.join(project_root, 'data', 'sobol_data.csv'), index=False)
+    results = Parallel(n_jobs=-1)(  
+        delayed(run_model)(run_index, vals)
+        for run_index, vals in tqdm(run_inputs, desc="Running simulations")
+    )
+
+    data_sobol = pd.DataFrame(results)
+    data_sobol.to_csv(os.path.join(data_dir, 'sobol_data.csv'), index=False)
 
 # Run Sobol analysis
 Si = sobol.analyze(problem, data_sobol['Recycle_Rate'].values, print_to_console=True, calc_second_order=False)
