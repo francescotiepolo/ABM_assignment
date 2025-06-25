@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
+from joblib import Parallel, delayed
+from tqdm import tqdm
 import sys
 import os
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -15,14 +17,14 @@ from model.core import RecyclingModel
 plot_dir = os.path.join(project_root, 'figures/SA')
 data_dir = os.path.join(project_root, 'data')
 
-# ------------------ Define problem for sensitivity analysis ------------------
+# Define problem for sensitivity analysis 
 problem = {
     'num_vars': 3,
     'names': ['delta', 'alpha', 'lambda_param'],
     'bounds': [[0.1, 1.0], [0.1, 1.0], [0.1, 5.0]]
 }
 
-# ------------------ OFAT Sensitivity ------------------
+# OFAT Sensitivity 
 replicates = 10
 max_steps = 100
 samples_per_param = 10
@@ -70,38 +72,38 @@ def plot_all_ofat(data, param):
 
 plot_all_ofat(data_ofat, "Recycle_Rate")
 
-# ------------------ Sobol Sensitivity ------------------
+# Sobol
 distinct_samples = 128  # Needs to be a power of 2 for Saltelli
 replicates = 10
-param_values = saltelli.sample(problem, distinct_samples)
 
 data_sobol = pd.DataFrame(columns=problem['names'] + ["Recycle_Rate", "Run"])
 
-batch = BatchRunner(RecyclingModel,
-                    max_steps=max_steps,
-                    variable_parameters={name: [] for name in problem['names']},
-                    model_reporters={"Recycle_Rate": lambda m: np.mean([h.s for h in m.households.values()])})
+def run_model(run_index, vals):
+    var_dict = {k: v for k, v in zip(problem['names'], vals)}
+    model = RecyclingModel(**var_dict)
+    for _ in range(max_steps):
+        model.step()
+    recycle_rate = np.mean([h.s for h in model.households.values()])
+    row = dict(zip(problem['names'], vals))
+    row.update({"Recycle_Rate": recycle_rate, "Run": run_index})
+    return row
 
+param_values = saltelli.sample(problem, distinct_samples)
 total_runs = replicates * len(param_values)
 
-for r in range(replicates):
-    for i, vals in enumerate(param_values):
-        run_index = r * len(param_values) + i
+run_inputs = [
+    (r * len(param_values) + i, vals)
+    for r in range(replicates)
+    for i, vals in enumerate(param_values)
+]
 
-        vals = list(vals)
-        var_dict = {k: v for k, v in zip(problem['names'], vals)}
-        batch.run_iteration(var_dict, tuple(vals), run_index)
-        result_df = batch.get_model_vars_dataframe()
-        result = result_df.iloc[-1] 
-        row = dict(zip(problem['names'], vals))
-        row.update({"Recycle_Rate": result["Recycle_Rate"], "Run": run_index})
-        data_sobol.loc[run_index] = row
+results = Parallel(n_jobs=-1)(  
+    delayed(run_model)(run_index, vals)
+    for run_index, vals in tqdm(run_inputs, desc="Running simulations")
+)
 
-        if run_index % (total_runs // 100) == 0 or run_index == total_runs - 1:
-            percent = 100 * (run_index + 1) / total_runs
-            print(f"{percent:.0f}% done")
-
-    data_sobol.to_csv(os.path.join(data_dir, "Sobol.csv"), index=False)
+data_sobol = pd.DataFrame(results)
+data_sobol.to_csv(os.path.join(project_root, 'data', 'sobol_data.csv'), index=False)
 
 # Run Sobol analysis
 Si = sobol.analyze(problem, data_sobol['Recycle_Rate'].values, print_to_console=True)
