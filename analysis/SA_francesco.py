@@ -81,11 +81,11 @@ for i, var in enumerate(problem['names']):
     values = np.linspace(*problem['bounds'][i], num=samples_per_param)
     fixed_params = {k: v for k, v in default_values.items() if k != var}
 
-    if var in int_params:
-        values = values.astype(int)
-
     all_dfs = []
     for val in tqdm(values, desc=f"OFAT param {var}"):
+        if var in int_params:
+            val = int(val)
+
         # Parallelize over replicates
         results = Parallel(n_jobs=-1)(
             delayed(run_single_ofat_run)(var, val, max_steps, fixed_params, seed) for seed in range(replicates)
