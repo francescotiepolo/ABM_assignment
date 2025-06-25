@@ -130,10 +130,6 @@ for key, data in metrics.items():
     bins = np.logspace(np.log10(min_size), np.log10(max_size), num=50)
     ccdf_smooth = np.array([np.mean(data >= b) for b in bins])
 
-    plt.figure(figsize=(6, 4))
-    plt.loglog(bins, ccdf_smooth, linestyle='-', linewidth=2)
-    plt.scatter(bins, ccdf_smooth, s=20)
-
     print(f"Metric: {key}")
     print(f"  Total avalanches detected: {len(data)}")
     print(f"  Mean size: {np.mean(data):.4f}")
@@ -154,27 +150,34 @@ for key, data in metrics.items():
     print(f"  KS (Power law): {ks_pl:.4f}")
     print(f"  KS (Truncated power law): {ks_trunc:.4f}")
 
-    x_fit = np.linspace(fit.xmin, max_size, 100)
-    if R_cut < 0 or p_cut < 0.05:
-        truncated_fit = fit.truncated_power_law
-        y_fit = truncated_fit.ccdf(x_fit)
-        plt.loglog(x_fit, y_fit, 'g--', label=f'Truncated PL (alpha={truncated_fit.alpha:.2f}, lambda={truncated_fit.Lambda:0.2f})')
-        print(f"  Truncated PL (alpha={truncated_fit.alpha:.2f}, lambda={truncated_fit.Lambda:0.2f})")
+    # 1) define your x-grid from xmin to xmax
+    x_emp = np.logspace(np.log10(fit.xmin), np.log10(max_size), num=50)
 
+    # 2) compute empirical CCDF on that grid
+    ccdf_emp = np.array([np.mean(data >= x) for x in x_emp])
+
+    # 3) plot the empirical tail yourself
+    fig, ax = plt.subplots(figsize=(6,4))
+    ax.loglog(x_emp, ccdf_emp, 'o-', label='Empirical CCDF (tail)', markersize=4)
+
+    # 4) overlay truncated PL if it’s the preferred model
+    if R_cut > 0 and p_cut >= 0.05:
+        tp = fit.truncated_power_law
+        y_trunc = tp.ccdf(x_emp)
+        ax.loglog(x_emp, y_trunc, '--', label=f'Trunc. PL, α={tp.alpha:.2f}, λ={tp.Lambda:.2f}')
+
+    # 5) overlay pure PL if it’s preferred
     if R_exp > 0 or p_exp >= 0.05:
-        ccdf_fit = (x_fit / fit.xmin) ** (-fit.alpha + 1)
-        ccdf_fit *= ccdf_smooth[np.argmin(np.abs(bins - fit.xmin))]
-        plt.loglog(x_fit, ccdf_fit, 'r--', label=f'Power-law fit (alpha={fit.alpha:.2f})')
+        # note power_law.ccdf() starts at 1.0 at xmin
+        pl = fit.power_law
+        y_pl = pl.ccdf(x_emp)
+        ax.loglog(x_emp, y_pl, '-.', label=f'PL fit, α={pl.alpha:.2f}')
 
-    plt.xlabel(f'{key} jump size')
-    plt.ylabel('Pr(size ≥ x)')
-    plt.title(f'Avalanche CCDF for {key} (delta={delta})')
-    plt.grid(True, which='both', ls='--', alpha=0.5)
-    plt.legend()
+    ax.set_xlabel(f'{key} jump size')
+    ax.set_ylabel('Pr(size ≥ x)')
+    ax.set_title(f'Avalanche CCDF for {key} (xmin={fit.xmin:.2f})')
+    ax.grid(True, which='both', ls='--', alpha=0.5)
+    ax.legend()
     plt.tight_layout()
     plt.savefig(os.path.join(fig_dir, f"avalanches_ccdf_{key}.png"), dpi=300)
     plt.close()
-
-    # To do:
-    # Only print from xmin to xmax
-    # Why green line is printed always above?
