@@ -17,12 +17,8 @@ class RecyclingModel(Model):
 
     def __init__(self, N=100, L=10, M=9, k=4, beta=0.1,
                  delta=0.5, c=0.3, kappa=0.05, epsilon=0.05,
-                 alpha=0.4, K_default=10, memory_length=10, logit=False, lambda_param=1.0, seed=133, activation='random', decay=0.8):
+                 alpha=0.4, K_default=10, memory_length=10, logit=False, lambda_param=1.0, activation='random', decay=0.8):
         super().__init__()
-        # 1. Seed for reproducibility
-        self.seed = seed if seed is not None else 0
-        self.random = np.random.RandomState(self.seed)
-        nx_seed = self.random.randint(1e9)
 
         # Store parameters
         self.num_agents = N
@@ -40,7 +36,7 @@ class RecyclingModel(Model):
         self.decay = decay
 
         # 2. Build social network with NetworkX and create grid and scheduler
-        self.G = nx.watts_strogatz_graph(n=N, k=k, p=beta, seed=nx_seed)
+        self.G = nx.watts_strogatz_graph(n=N, k=k, p=beta)
         self.net = NetworkGrid(self.G)
 
         self.grid = MultiGrid(width=L, height=L, torus=False)

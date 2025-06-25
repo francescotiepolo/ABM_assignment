@@ -15,7 +15,6 @@ class Household(Agent):
         self.alpha = alpha
         self.bin_id = bin_id
         self.lambda_param = model.lambda_param
-        self.local_random = np.random.RandomState(model.seed + unique_id)
         self.logit = model.logit  # Use logit choice model if True
         self.memory_length = model.memory_length  # Number of previous rounds the agent remembers
         self.rho_history = deque(maxlen=self.memory_length)
@@ -40,7 +39,7 @@ class Household(Agent):
         if self.deltaC_history:
             self.hat_deltaC = weighted_average(np.array(self.deltaC_history), decay=self.decay)
         
-        rng_val = self.local_random.random()
+        rng_val = self.random.random()
         self.s = compute_choice(self.P, self.C0, self.hat_deltaC, self.alpha, self.hat_rho, self.logit, self.lambda_param, rng_val)
 
 

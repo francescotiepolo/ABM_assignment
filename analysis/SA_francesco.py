@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
 from joblib import Parallel, delayed
+from tqdm_joblib import tqdm_joblib
 from tqdm import tqdm
 import sys
 import os
@@ -19,34 +20,81 @@ data_dir = os.path.join(project_root, 'data')
 
 # Define problem for sensitivity analysis 
 problem = {
-    'num_vars': 3,
-    'names': ['delta', 'alpha', 'lambda_param'],
-    'bounds': [[0.1, 1.0], [0.1, 1.0], [0.1, 5.0]]
+    'num_vars': 10,
+    'names': ['M', 'delta', 'c', 'kappa', 'epsilon', 'alpha', 'K_default', 'memory_length', 'lambda_param', 'decay'],
+    'bounds': [
+        [3, 20],           # M
+        [0.1, 1.0],        # delta
+        [0.1, 1.0],        # c
+        [0.01, 0.2],       # kappa
+        [0.01, 0.2],       # epsilon
+        [0.1, 1.0],        # alpha
+        [5, 20],           # K_default
+        [10, 200],         # memory_length
+        [1, 50],           # lambda_param
+        [0.1, 1.0]         # decay
+    ]
+}
+
+default_values = {
+    'N': 100,                       # households
+    'L': 10,                        # grid size
+    'M': 9,                         # bins
+    'k': 4,                         # average degree
+    'beta': 0.1,                    # rewiring probability
+    'delta': 0.7,                   # surcharge factor
+    'c': 0.3,                       # base cost
+    'kappa': 0.05,                  # distance cost factor
+    'epsilon': 0.05,                # fraction of eco-champions
+    'alpha': 0.5,                   # social influence weight             
+    'K_default': 10,                # bin capacity
+    'memory_length': 100,           # memory length for weighted average
+    'logit': True,                  # use logit choice model
+    'lambda_param': 20,             # logit scaling parameter
+    'activation': 'simultaneous',   # activation type
+    'decay': 0.8                   # decay factor for weighted average
 }
 
 # OFAT Sensitivity 
-replicates = 10
+replicates = 250
 max_steps = 100
-samples_per_param = 10
+samples_per_param = 20
+
+def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
+    # Create model with single parameter value
+    # Set random seed if needed for reproducibility
+    if seed is not None:
+        np.random.seed(seed)
+
+    model_params = {var: val}
+    model_params.update(fixed_params)
+    model = RecyclingModel(**model_params)
+    for _ in range(max_steps):
+        model.step()
+    recycle_rate = np.mean([h.s for h in model.households.values()])
+    return recycle_rate
 
 data_ofat = {}
 
 for i, var in enumerate(problem['names']):
     values = np.linspace(*problem['bounds'][i], num=samples_per_param)
+    fixed_params = {k: v for k, v in default_values.items() if k != var}
 
-    batch = FixedBatchRunner(RecyclingModel,
-                             max_steps=max_steps,
-                             iterations=replicates,
-                             parameters_list=[{var: val} for val in values],
-                             fixed_parameters=None,
-                             model_reporters={"Recycle_Rate": lambda m: np.mean([h.s for h in m.households.values()])},
-                             display_progress=True)
+    all_dfs = []
+    for val in tqdm(values, desc=f"OFAT param {var}"):
+        # Parallelize over replicates
+        results = Parallel(n_jobs=-1)(
+            delayed(run_single_ofat_run)(var, val, max_steps, fixed_params, seed) for seed in range(replicates)
+        )
+        # Aggregate results into DataFrame
+        df_val = pd.DataFrame({
+            var: val,
+            "Recycle_Rate": results
+        })
+        all_dfs.append(df_val)
 
-    batch.run_all()
-    df = batch.get_model_vars_dataframe()
-    df[var] = np.repeat(values, replicates)
-    df.to_csv(os.path.join(data_dir, f"OFAT_{var}.csv"), index=False)
-    data_ofat[var] = df
+    data_ofat[var] = pd.concat(all_dfs, ignore_index=True)
+    data_ofat[var].to_csv(os.path.join(data_dir, f"OFAT_{var}.csv"), index=False)
 
 
 def plot_param_var_conf(ax, df, var, param):
@@ -73,8 +121,15 @@ def plot_all_ofat(data, param):
 plot_all_ofat(data_ofat, "Recycle_Rate")
 
 # Sobol
-distinct_samples = 128  # Needs to be a power of 2 for Saltelli
-replicates = 10
+
+D = len(problem['names'])
+distinct_samples = 128
+# Compute number of replicates to hit ~5000 runs
+target_total_runs = 5000
+replicates = max(1, target_total_runs // (distinct_samples * (D + 2)))
+
+print(f"Using {distinct_samples} distinct samples and {replicates} replicates")
+print(f"Total runs: {distinct_samples * (D + 2) * replicates}")
 
 data_sobol = pd.DataFrame(columns=problem['names'] + ["Recycle_Rate", "Run"])
 
@@ -88,7 +143,7 @@ def run_model(run_index, vals):
     row.update({"Recycle_Rate": recycle_rate, "Run": run_index})
     return row
 
-param_values = saltelli.sample(problem, distinct_samples)
+param_values = saltelli.sample(problem, distinct_samples, calc_second_order=False)
 total_runs = replicates * len(param_values)
 
 run_inputs = [
@@ -106,7 +161,7 @@ data_sobol = pd.DataFrame(results)
 data_sobol.to_csv(os.path.join(project_root, 'data', 'sobol_data.csv'), index=False)
 
 # Run Sobol analysis
-Si = sobol.analyze(problem, data_sobol['Recycle_Rate'].values, print_to_console=True)
+Si = sobol.analyze(problem, data_sobol['Recycle_Rate'].values, print_to_console=True, calc_second_order=False)
 
 
 def plot_index(s, params, i, title=''):
@@ -133,5 +188,5 @@ def plot_index(s, params, i, title=''):
     plt.close()
 
 
-for idx in ('1', '2', 'T'):
+for idx in ('1', 'T'):
     plot_index(Si, problem['names'], idx, title=f"Sobol Order {idx} Sensitivity: Recycle Rate")
