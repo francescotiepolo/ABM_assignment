@@ -55,6 +55,8 @@ default_values = {
     'decay': 0.8                    # decay factor for weighted average
 }
 
+int_params = {'memory_length'}
+
 # OFAT Sensitivity 
 replicates = 250
 max_steps = 100
@@ -78,6 +80,9 @@ data_ofat = {}
 for i, var in enumerate(problem['names']):
     values = np.linspace(*problem['bounds'][i], num=samples_per_param)
     fixed_params = {k: v for k, v in default_values.items() if k != var}
+
+    if var in int_params:
+        values = values.astype(int)
 
     all_dfs = []
     for val in tqdm(values, desc=f"OFAT param {var}"):
@@ -133,7 +138,7 @@ print(f"Total runs: {distinct_samples * (D + 2) * replicates}")
 data_sobol = pd.DataFrame(columns=problem['names'] + ["Recycle_Rate", "Run"])
 
 def run_model(run_index, vals):
-    var_dict = {k: v for k, v in zip(problem['names'], vals)}
+    var_dict = {k: int(v) if k in int_params else v for k, v in zip(problem['names'], vals)}
     model = RecyclingModel(**var_dict)
     for _ in range(max_steps):
         model.step()
