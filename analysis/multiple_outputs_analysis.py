@@ -114,7 +114,6 @@ metrics = {
     'num_abandoned': []
 }
 
-# Run in parallel
 results = Parallel(n_jobs=-1)(delayed(simulate_single_seed)(seed) for seed in tqdm(seeds))
 for res in results:
     for k in metrics:
@@ -133,7 +132,7 @@ for key, data in metrics.items():
     print(f"Metric: {key}\n  Total avalanches detected: {len(data)}\n  Mean size: {np.mean(data):.4f}\n  Median size: {np.median(data):.4f}\n  Max size: {np.max(data):.4f}")
 
     try:
-        fit = powerlaw.Fit(data, verbose=False, xmin=0.5)  # Manually set xmin to avoid high alpha
+        fit = powerlaw.Fit(data, verbose=False, xmin=0.5)
     except Exception as e:
         print(f"Fit failed for {key}: {e}")
         continue

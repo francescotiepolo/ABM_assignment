@@ -46,7 +46,6 @@ params = dict(
 # 2. Collect avalanches across runs
 all_avalanches = []
 for seed in seeds:
-    params['seed'] = seed
     model = RecyclingModel(**params)
     r_series = []
     for round in range(T):
