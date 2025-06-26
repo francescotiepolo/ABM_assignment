@@ -5,7 +5,6 @@ import random
 import numpy as np
 import networkx as nx
 import powerlaw
-import warnings
 from joblib import Parallel, delayed
 from tqdm import tqdm
 
