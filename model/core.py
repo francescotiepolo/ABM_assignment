@@ -5,7 +5,7 @@ from mesa.datacollection import DataCollector
 import networkx as nx
 import numpy as np
 from .agents import Household, Bin
-from .functions import assign_bin, compute_deltas
+from .functions import assign_bin, compute_deltas, bin_positions
 
 class RecyclingModel(Model):
     """
@@ -48,7 +48,7 @@ class RecyclingModel(Model):
         self.bins = {}     
 
         # 3a. Place bins on a 3×3 subgrid within L×L
-        self.bin_positions = np.array([(x, y) for x in [2, 5, 8] for y in [2, 5, 8]], dtype=np.float64)
+        self.bin_positions = bin_positions(self.grid_size, self.num_bins)
         for m, (x_m, y_m) in enumerate(self.bin_positions):
             bin_id = N + m 
             bin_agent = Bin(unique_id=bin_id, model=self, K_m=K_default, pos=(int(x_m), int(y_m)))

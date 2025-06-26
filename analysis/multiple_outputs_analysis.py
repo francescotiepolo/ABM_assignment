@@ -6,6 +6,8 @@ import numpy as np
 import networkx as nx
 import powerlaw
 import warnings
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.append(project_root)
@@ -21,7 +23,7 @@ def compute_avalanches(series, delta=0.05):
 
 # Parameters
 T = 1000
-seeds = range(0, 10)
+seeds = range(10)
 delta = 0.01
 N = 150
 L = int(np.ceil(np.sqrt(N)))
@@ -45,30 +47,17 @@ params = dict(
     decay=0.8
 )
 
-# Collect avalanches for all metrics
-metrics = {
-    'recycle_rate': [],
-    'frac_overloaded': [],
-    'largest_cc': [],
-    'frac_switches': [],
-    'avg_surcharge': [],
-    'var_rho': [],
-    'num_overloaded_agents': [],
-    'num_clusters': [],
-    'num_adopted': [],
-    'num_abandoned': []
-}
-
-for seed in seeds:
-    params['seed'] = seed
-    model = RecyclingModel(**params)
+# Collect metrics
+def simulate_single_seed(seed):
+    local_params = params.copy()
+    np.random.seed(seed)
+    model = RecyclingModel(**local_params)
     prev_choices = {i: h.s for i, h in model.households.items()}
 
     series = {key: [] for key in metrics}
 
     for t in range(T):
         model.step()
-
         agents = list(model.households.values())
         bins = list(model.bins.values())
 
@@ -110,68 +99,65 @@ for seed in seeds:
             series['num_adopted'].append(adopted)
             series['num_abandoned'].append(abandoned)
 
-    for key in metrics:
-        aval = compute_avalanches(series[key], delta=delta)
-        metrics[key].extend(aval)
+    return {k: compute_avalanches(series[k], delta=delta) for k in series}
+
+metrics = {
+    'recycle_rate': [],
+    'frac_overloaded': [],
+    'largest_cc': [],
+    'frac_switches': [],
+    'avg_surcharge': [],
+    'var_rho': [],
+    'num_overloaded_agents': [],
+    'num_clusters': [],
+    'num_adopted': [],
+    'num_abandoned': []
+}
+
+# Run in parallel
+results = Parallel(n_jobs=-1)(delayed(simulate_single_seed)(seed) for seed in tqdm(seeds))
+for res in results:
+    for k in metrics:
+        metrics[k].extend(res[k])
 
 # Plot CCDFs
 fig_dir = os.path.join(project_root, 'figures/multiple_outputs')
 os.makedirs(fig_dir, exist_ok=True)
 
 for key, data in metrics.items():
-    if len(data) == 0:
-        continue
     data = np.array(data)
     data = data[data > 0]
     if len(data) == 0:
         continue
 
-    min_size, max_size = np.min(data), np.max(data)
-    bins = np.logspace(np.log10(min_size), np.log10(max_size), num=50)
-    ccdf_smooth = np.array([np.mean(data >= b) for b in bins])
+    print(f"Metric: {key}\n  Total avalanches detected: {len(data)}\n  Mean size: {np.mean(data):.4f}\n  Median size: {np.median(data):.4f}\n  Max size: {np.max(data):.4f}")
 
-    print(f"Metric: {key}")
-    print(f"  Total avalanches detected: {len(data)}")
-    print(f"  Mean size: {np.mean(data):.4f}")
-    print(f"  Median size: {np.median(data):.4f}")
-    print(f"  Max size: {np.max(data):.4f}")
+    try:
+        fit = powerlaw.Fit(data, verbose=False, xmin=0.5)  # Manually set xmin to avoid high alpha
+    except Exception as e:
+        print(f"Fit failed for {key}: {e}")
+        continue
 
-    # Fit power law and compare distributions
-    fit = powerlaw.Fit(data, verbose=False)
-    R_exp, p_exp = fit.distribution_compare('power_law', 'exponential', normalized_ratio=True)
-    R_cut, p_cut = fit.distribution_compare('power_law', 'truncated_power_law', normalized_ratio=True)
-
-    ks_pl = fit.power_law.KS()
-    ks_trunc = fit.truncated_power_law.KS()
-
-    print(f"  Power law alpha: {fit.alpha:.2f}, xmin: {fit.xmin:.2f}")
-    print(f"  Power law vs Exponential: R = {R_exp:.2f}, p = {p_exp:.4f}")
-    print(f"  Power law vs Truncated: R = {R_cut:.2f}, p = {p_cut:.4f}")
-    print(f"  KS (Power law): {ks_pl:.4f}")
-    print(f"  KS (Truncated power law): {ks_trunc:.4f}")
-
-    # 1) define your x-grid from xmin to xmax
-    x_emp = np.logspace(np.log10(fit.xmin), np.log10(max_size), num=50)
-
-    # 2) compute empirical CCDF on that grid
+    x_emp = np.logspace(np.log10(fit.xmin), np.log10(data.max()), num=50)
     ccdf_emp = np.array([np.mean(data >= x) for x in x_emp])
 
-    # 3) plot the empirical tail yourself
     fig, ax = plt.subplots(figsize=(6,4))
     ax.loglog(x_emp, ccdf_emp, 'o-', label='Empirical CCDF (tail)', markersize=4)
 
-    # 4) overlay truncated PL if it’s the preferred model
+    R_exp, p_exp = fit.distribution_compare('power_law', 'exponential')
+    R_cut, p_cut = fit.distribution_compare('power_law', 'truncated_power_law')
+
     if R_cut > 0 and p_cut >= 0.05:
         tp = fit.truncated_power_law
         y_trunc = tp.ccdf(x_emp)
-        ax.loglog(x_emp, y_trunc, '--', label=f'Trunc. PL, α={tp.alpha:.2f}, λ={tp.Lambda:.2f}')
+        if len(y_trunc) == len(x_emp):
+            ax.loglog(x_emp, y_trunc, '--', label=f'Trunc. PL, α={tp.alpha:.2f}, λ={tp.Lambda:.2f}')
 
-    # 5) overlay pure PL if it’s preferred
     if R_exp > 0 or p_exp >= 0.05:
-        # note power_law.ccdf() starts at 1.0 at xmin
         pl = fit.power_law
         y_pl = pl.ccdf(x_emp)
-        ax.loglog(x_emp, y_pl, '-.', label=f'PL fit, α={pl.alpha:.2f}')
+        if len(y_pl) == len(x_emp):
+            ax.loglog(x_emp, y_pl, '-.', label=f'PL fit, α={pl.alpha:.2f}')
 
     ax.set_xlabel(f'{key} jump size')
     ax.set_ylabel('Pr(size ≥ x)')

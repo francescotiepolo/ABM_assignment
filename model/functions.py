@@ -45,3 +45,22 @@ def compute_deltas(bin_ids, Qm, Km, delt):
         overload = Qm[bin_ids[i]] - Km[bin_ids[i]]
         out[i] = delt * (overload if overload > 0 else 0)
     return out
+
+@njit(cache=True)
+def bin_positions(L, M):
+    n_side = int(np.ceil(np.sqrt(M)))
+    positions = np.empty((M, 2), dtype=np.int64)
+
+    xs = np.linspace(1, L - 2, n_side).astype(np.int64)
+    ys = np.linspace(1, L - 2, n_side).astype(np.int64)
+
+    count = 0
+    for x in xs:
+        for y in ys:
+            if count < M:
+                positions[count, 0] = x
+                positions[count, 1] = y
+                count += 1
+            else:
+                break
+    return positions

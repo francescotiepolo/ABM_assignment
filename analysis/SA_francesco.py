@@ -14,7 +14,7 @@ sys.path.append(project_root)
 from model.core import RecyclingModel
 
 # Set to True to use saved data for plotting, False to run new simulations
-USE_SAVED_DATA_OFAT = True
+USE_SAVED_DATA_OFAT = False
 USE_SAVED_DATA_SOBOL = False
 
 # Create output directory
@@ -33,7 +33,7 @@ problem = {
         [0.01, 1.0],       # epsilon
         [0.1, 1.0],        # alpha
         [1, 30],           # K_default
-        [1, 150],         # memory_length
+        [1, 150],          # memory_length
         [1, 50],           # lambda_param
         [0.1, 1.0]         # decay
     ]
@@ -58,11 +58,11 @@ default_values = {
     'decay': 0.8                    # decay factor for weighted average
 }
 
-int_params = {'memory_length'}
+int_params = {'M', 'K_default', 'memory_length'}
 
 # OFAT Sensitivity 
 replicates = 50
-max_steps = 300
+max_steps = 100
 distinct_samples = 30
 
 def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
@@ -75,7 +75,8 @@ def run_single_ofat_run(var, val, max_steps, fixed_params, seed=None):
     model = RecyclingModel(**model_params)
     for _ in range(max_steps):
         model.step()
-    recycle_rate = np.mean([h.s for h in model.households.values()])
+    recycle_series = model.datacollector.get_model_vars_dataframe()["Global_Recycle_Rate"]
+    recycle_rate = recycle_series[-20:].mean()
     return recycle_rate
 
 data_ofat = {}
@@ -167,7 +168,8 @@ else:
         model = RecyclingModel(**var_dict)
         for _ in range(max_steps):
             model.step()
-        recycle_rate = np.mean([h.s for h in model.households.values()])
+        recycle_series = model.datacollector.get_model_vars_dataframe()["Global_Recycle_Rate"]
+        recycle_rate = recycle_series[-20:].mean()
         row = dict(zip(problem['names'], vals))
         row.update({"Recycle_Rate": recycle_rate, "Run": run_index})
         return row
