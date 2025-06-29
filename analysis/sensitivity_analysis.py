@@ -26,16 +26,16 @@ problem = {
     'num_vars': 10,
     'names': ['M', 'delta', 'c', 'kappa', 'epsilon', 'alpha', 'K_default', 'memory_length', 'lambda_param', 'decay'],
     'bounds': [
-        [3, 40],           # M
-        [0.1, 1.0],        # delta
-        [0.1, 1.0],        # c
+        [1, 25],           # M
+        [0.01, 1.0],        # delta
+        [0.01, 1.0],        # c
         [0.01, 1.0],       # kappa
         [0.01, 1.0],       # epsilon
-        [0.1, 1.0],        # alpha
-        [1, 30],           # K_default
-        [1, 150],          # memory_length
-        [1, 50],           # lambda_param
-        [0.1, 1.0]         # decay
+        [0.01, 1.0],        # alpha
+        [1, 20],           # K_default
+        [1, 20],          # memory_length
+        [1, 10],           # lambda_param
+        [0.01, 1.0]         # decay
     ]
 }
 
