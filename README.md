@@ -4,14 +4,14 @@ Agent-based model of household recycling behavior using Mesa.
 
 Files and folders description:
 
-model:
+### model:
     agents.py  
     → Defines the Household and Bin agent classes
 
     core.py  
     → Implements the RecyclingModel class
 
-analysis:
+### analysis:
     basic_run.py  
     → Runs a basic simulation of the model
     → Here you can find a description of every parameter
@@ -25,11 +25,11 @@ analysis:
     sensitivity_analysis.py  
     → Run sensitivity analysis for the model
 
-data:
+### data:
     → Contains results for sensitivity analysis for replotting without having to run the SA again
 
-figures:
+### figures:
     → Contains every figure and animation generated through any of the code
 
-drafts_and_notebooks:
+### drafts_and_notebooks:
     → Contains the notebooks used to test the model, generate animations and investigate emergence
