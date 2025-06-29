@@ -32,4 +32,4 @@ figures:
     → Contains every figure and animation generated through any of the code
 
 drafts_and_notebooks:
-    → Contains the notebooks used to test the model and to generate animations
+    → Contains the notebooks used to test the model, generate animations and investigate emergence
