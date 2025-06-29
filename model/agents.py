@@ -4,21 +4,21 @@ import numpy as np
 from .functions import compute_choice, weighted_average
 
 class Household(Agent):
-    """
+    '''
     Household agent that chooses whether to recycle (s=True) or not (s=False)
-    """
+    '''
 
     def __init__(self, unique_id, model, P, C0, alpha, bin_id):
         super().__init__(unique_id, model)
-        self.P = P
-        self.C0 = C0
-        self.alpha = alpha
-        self.bin_id = bin_id
-        self.lambda_param = model.lambda_param
+        self.P = P # Intrinsic motivation to recycle
+        self.C0 = C0 # Base cost of recycling
+        self.alpha = alpha # Social influence weight
+        self.bin_id = bin_id # Assigned recycling bin ID
+        self.lambda_param = model.lambda_param # Logit scaling parameter
         self.logit = model.logit  # Use logit choice model if True
         self.memory_length = model.memory_length  # Number of previous rounds the agent remembers
-        self.rho_history = deque(maxlen=self.memory_length)
-        self.deltaC_history = deque(maxlen=self.memory_length)
+        self.rho_history = deque(maxlen=self.memory_length) # History of neighbor fraction who chose R
+        self.deltaC_history = deque(maxlen=self.memory_length) # History of surcharges
         self.decay = model.decay  # Decay factor for weighted average
 
 
@@ -27,13 +27,13 @@ class Household(Agent):
         self.hat_rho = 0.0
         self.hat_deltaC = 0.0
 
-        # Realized terms (after choices)
+        # Initialize realized terms
         self.rho = 0.0
         self.deltaC = 0.0
 
     def step(self):
 
-        # Use average of history
+        # Use history to compute expected utility
         if self.rho_history:
             self.hat_rho = weighted_average(np.array(self.rho_history), decay=self.decay)
         if self.deltaC_history:
@@ -44,12 +44,8 @@ class Household(Agent):
 
 
     def advance(self):
-        """
-        Realize current outcomes:
-          - Compute realized rho = fraction of neighbors who chose R
-          - Add this agent’s choice to its bin’s Q_m (number of recyclers this period at bin m).
-        """
-        # 1. Realized neighbor fraction
+
+        # 1. Realized recycling neighbor fraction
         neigh_ids = self.model.net.get_neighbors(self.unique_id)
         if len(neigh_ids) > 0:
             neigh_choices = [self.model.households[j].s for j in neigh_ids]
@@ -57,7 +53,7 @@ class Household(Agent):
         else:
             self.rho = 0.0
 
-        # 2. Contribute to bin’s Q_m if this agent recycled
+        # 2. Contribute to bin’s capacity Q if this agent recycled
         if self.s:
             bin_agent = self.model.bins[self.bin_id]
             bin_agent.Q_m += 1
@@ -68,13 +64,13 @@ class Household(Agent):
 
 
 class Bin(Agent):
-    """
+    '''
     Recycling bin agent placed on a 2D grid cell.
     Attributes:
       - K_m: capacity
       - Q_m: number of recyclers assigned this period
       - x_m, y_m: spatial coordinates
-    """
+    '''
 
     def __init__(self, unique_id, model, K_m, pos):
         super().__init__(unique_id, model)
@@ -86,4 +82,4 @@ class Bin(Agent):
         pass  # Bin has no decision to make
 
     def advance(self):
-        pass  # Overload handled by Household.advance after Q_m increment
+        pass  # Overload handled by Household.advance after Q_m increase

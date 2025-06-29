@@ -16,59 +16,64 @@ random.seed(133)
 np.random.seed(133)
 
 def compute_avalanches(series, delta=0.05):
+    '''Compute avalanches (of size of at least delta) from a time series of recycling rates'''
     diffs = np.diff(series)
     avalanches = diffs[diffs > delta]
     return avalanches
 
 # Parameters
-T = 1000
-seeds = range(10)
-delta = 0.01
-N = 150
-L = int(np.ceil(np.sqrt(N)))
+T = 1000 # number of time steps
+seeds = range(10) # number of runs
+delta = 0.01 # threshold for defining an avalanche
+N = 150 # number of households
+L = int(np.ceil(np.sqrt(N))) # grid size
 
 params = dict(
-    N=N,
-    L=L,
-    M=9,
-    k=4,
-    beta=0.1,
-    delta=0.7,
-    c=0.3,
-    kappa=0.05,
-    epsilon=0.05,
-    alpha=0.5,
-    K_default=7,
-    memory_length=100,
-    logit=True,
-    lambda_param=5,
-    activation='simultaneous',
-    decay=0.8
+    N=N,                        # households
+    L=L,                        # grid size
+    M=9,                        # bins
+    k=4,                        # average degree
+    beta=0.1,                   # rewiring probability
+    delta=0.7,                  # surcharge factor
+    c=0.3,                      # base cost
+    kappa=0.05,                 # distance cost factor
+    epsilon=0.05,               # fraction of eco-champions
+    alpha=0.5,                  # social influence weight
+    K_default=7,                # bin capacity
+    memory_length=100,          # memory length for weighted average
+    logit=True,                 # use logit choice model
+    lambda_param=5,             # logit scaling parameter
+    activation='simultaneous',  # activation type
+    decay=0.8                   # decay factor for weighted average
 )
 
 # Collect metrics
 def simulate_single_seed(seed):
+    '''Run a single simulation with given seed and collect metrics'''
     local_params = params.copy()
     np.random.seed(seed)
     model = RecyclingModel(**local_params)
-    prev_choices = {i: h.s for i, h in model.households.items()}
+    prev_choices = {i: h.s for i, h in model.households.items()} # Store previous choices to detect switches
 
-    series = {key: [] for key in metrics}
+    series = {key: [] for key in metrics} # Initialize series for metrics
 
     for t in range(T):
+        # Run the model for one step
         model.step()
         agents = list(model.households.values())
         bins = list(model.bins.values())
 
-        s_vals = np.array([h.s for h in agents])
-        rho_vals = np.array([h.rho for h in agents])
-        deltaC_vals = np.array([h.deltaC for h in agents])
+        # Collect metrics
+        s_vals = np.array([h.s for h in agents]) # Recycling choices
+        rho_vals = np.array([h.rho for h in agents]) # Recycling rates
+        deltaC_vals = np.array([h.deltaC for h in agents]) # Surcharge values
 
-        r = np.mean(s_vals)
-        frac_over = sum(b.Q_m > b.K_m for b in bins) / len(bins)
+        r = np.mean(s_vals) # Global recycling rate
+        frac_over = sum(b.Q_m > b.K_m for b in bins) / len(bins) # Fraction of overloaded bins
 
-        adopters = [i for i, h in model.households.items() if h.s]
-        if adopters:
+        adopters = [i for i, h in model.households.items() if h.s] 
+        if adopters: # If there are any adopters
+            # Compute largest connected component and number of clusters in the subgraph of adopters
             subG = model.G.subgraph(adopters)
             largest_cc = max((len(c) for c in nx.connected_components(subG)), default=0)
             num_clusters = len(list(nx.connected_components(subG)))
@@ -76,30 +81,31 @@ def simulate_single_seed(seed):
             largest_cc = 0
             num_clusters = 0
 
-        switches = sum(1 for i, h in model.households.items() if h.s != prev_choices[i])
-        adopted = sum(1 for i, h in model.households.items() if h.s and not prev_choices[i])
-        abandoned = sum(1 for i, h in model.households.items() if not h.s and prev_choices[i])
+        switches = sum(1 for i, h in model.households.items() if h.s != prev_choices[i]) # Count switches in recycling choices
+        adopted = sum(1 for i, h in model.households.items() if h.s and not prev_choices[i]) # Count new adopters
+        abandoned = sum(1 for i, h in model.households.items() if not h.s and prev_choices[i]) # Count abandoned recyclers
 
-        overloaded_bins = {m for m, b in model.bins.items() if b.Q_m > b.K_m}
-        overloaded_agents = sum(1 for h in agents if h.bin_id in overloaded_bins)
+        overloaded_bins = {m for m, b in model.bins.items() if b.Q_m > b.K_m} # Set of overloaded bins
+        overloaded_agents = sum(1 for h in agents if h.bin_id in overloaded_bins) # Count agents with overloaded bins
 
-        for i, h in model.households.items():
+        for i, h in model.households.items(): # Update previous choices
             prev_choices[i] = h.s
 
-        if t > 100:
-            series['recycle_rate'].append(r)
-            series['frac_overloaded'].append(frac_over)
-            series['largest_cc'].append(largest_cc / N)
-            series['frac_switches'].append(switches / N)
-            series['avg_surcharge'].append(np.mean(deltaC_vals))
-            series['var_rho'].append(np.var(rho_vals))
-            series['num_overloaded_agents'].append(overloaded_agents)
-            series['num_clusters'].append(num_clusters)
-            series['num_adopted'].append(adopted)
-            series['num_abandoned'].append(abandoned)
+        if t > 100: # Start collecting metrics after initial warm-up period
+            series['recycle_rate'].append(r)                             # Global recycling rate
+            series['frac_overloaded'].append(frac_over)                  # Fraction of overloaded bins
+            series['largest_cc'].append(largest_cc / N)                  # Normalized size of largest connected component
+            series['frac_switches'].append(switches / N)                 # Fraction of agents that switched their recycling choice
+            series['avg_surcharge'].append(np.mean(deltaC_vals))         # Average surcharge
+            series['var_rho'].append(np.var(rho_vals))                   # Variance of recycling rates
+            series['num_overloaded_agents'].append(overloaded_agents)    # Number of agents with overloaded bins
+            series['num_clusters'].append(num_clusters)                  # Number of clusters in the subgraph of adopters
+            series['num_adopted'].append(adopted)                        # Number of new adopters
+            series['num_abandoned'].append(abandoned)                    # Number of abandoned recyclers
 
-    return {k: compute_avalanches(series[k], delta=delta) for k in series}
+    return {k: compute_avalanches(series[k], delta=delta) for k in series} # Collect avalanches for each metric
 
+# Initialize metrics dictionary, metrics definitions are defined above
 metrics = {
     'recycle_rate': [],
     'frac_overloaded': [],
@@ -113,6 +119,7 @@ metrics = {
     'num_abandoned': []
 }
 
+# Run simulations in parallel
 results = Parallel(n_jobs=-1)(delayed(simulate_single_seed)(seed) for seed in tqdm(seeds))
 for res in results:
     for k in metrics:
@@ -122,6 +129,7 @@ for res in results:
 fig_dir = os.path.join(project_root, 'figures/multiple_outputs')
 os.makedirs(fig_dir, exist_ok=True)
 
+# Print summary statistics, fit power-law distributions and plot for each metric
 for key, data in metrics.items():
     data = np.array(data)
     data = data[data > 0]

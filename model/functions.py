@@ -4,6 +4,7 @@ from numba import njit
 
 @njit(cache=True)
 def weighted_average(history, decay=0.8):
+    '''Compute a weighted average of a history of values with exponential decay'''
     n = len(history)
     weights = np.empty(n)
     for i in range(n):
@@ -13,6 +14,7 @@ def weighted_average(history, decay=0.8):
 
 @njit(cache=True)
 def compute_choice(P, C0, hat_deltaC, alpha, hat_rho, logit, lambda_param, rng_val):
+    '''Compute the choice of a household agent based on its expected utility function'''
     U_R = P - (C0 + hat_deltaC) + alpha * hat_rho
     U_N = - alpha * hat_rho
 
@@ -27,6 +29,7 @@ def compute_choice(P, C0, hat_deltaC, alpha, hat_rho, logit, lambda_param, rng_v
     
 @njit(cache=True)
 def assign_bin(x_i, y_i, bin_positions):
+    '''Assign a household to the nearest bin based on its coordinates'''
     min_dist = 1e10
     bin_id = -1
     for m in range(len(bin_positions)):
@@ -39,6 +42,7 @@ def assign_bin(x_i, y_i, bin_positions):
 
 @njit(cache=True)
 def compute_deltas(bin_ids, Qm, Km, delt):
+    '''Compute the surcharge deltas for each bin based on its current and maximum capacity'''
     n = bin_ids.shape[0]
     out = np.empty(n)
     for i in range(n):
@@ -48,6 +52,7 @@ def compute_deltas(bin_ids, Qm, Km, delt):
 
 @njit(cache=True)
 def bin_positions(L, M):
+    '''Generate positions for M bins on a grid of size L x L'''
     n_side = int(np.ceil(np.sqrt(M)))
     positions = np.empty((M, 2), dtype=np.int64)
 

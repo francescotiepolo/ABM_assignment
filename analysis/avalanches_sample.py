@@ -11,16 +11,17 @@ random.seed(133)
 np.random.seed(133)
 
 def compute_avalanches(series, delta=0.05):
+    '''Compute avalanches (of size of at least delta) from a time series of recycling rates'''
     diffs = np.diff(series)
     avalanches = diffs[diffs > delta]
     return avalanches
 
 # 1. Parameters for avalanche analysis
-T = 1000                    # number of time steps
-seeds = range(0, 10)         # multiple runs for statistics
-delta = 0.01                # threshold for defining an avalanche
+T = 1000 # number of time steps
+seeds = range(0, 10) # number of runs
+delta = 0.01 # threshold for defining an avalanche
 
-N = 150
+N = 150 # number of households
 L = int(np.ceil(np.sqrt(N)))
 
 # Parameter set

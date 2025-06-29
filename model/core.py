@@ -8,12 +8,12 @@ from .agents import Household, Bin
 from .functions import assign_bin, compute_deltas, bin_positions
 
 class RecyclingModel(Model):
-    """
+    '''
     Mesa Model:
     - SimultaneousActivation scheduler
     - NetworkGrid for social network
     - MultiGrid for spatial bin placement
-    """
+    '''
 
     def __init__(self, N=100, L=10, M=9, k=4, beta=0.1,
                  delta=0.5, c=0.3, kappa=0.05, epsilon=0.05,
@@ -21,19 +21,19 @@ class RecyclingModel(Model):
         super().__init__()
 
         # Store parameters
-        self.num_agents = N
-        self.grid_size = L
-        self.num_bins = M
-        self.delta = delta
-        self.c = c
-        self.kappa = kappa
-        self.epsilon = epsilon
-        self.alpha = alpha
-        self.K_default = K_default
-        self.memory_length = memory_length
-        self.logit = logit
-        self.lambda_param = lambda_param
-        self.decay = decay
+        self.num_agents = N # Number of households
+        self.grid_size = L # Grid size (LxL)
+        self.num_bins = M # Number of recycling bins
+        self.delta = delta # Surcharge factor
+        self.c = c # Base cost of recycling
+        self.kappa = kappa # Distance cost factor
+        self.epsilon = epsilon # Fraction of eco-champions
+        self.alpha = alpha # Social influence weight
+        self.K_default = K_default # Default bin capacity
+        self.memory_length = memory_length # Memory length for weighted average
+        self.logit = logit # Use logit choice model if True
+        self.lambda_param = lambda_param # Logit scaling parameter
+        self.decay = decay # Decay factor for weighted average
 
         # 2. Build social network with NetworkX and create grid and scheduler
         self.G = nx.watts_strogatz_graph(n=N, k=k, p=beta)
@@ -47,7 +47,7 @@ class RecyclingModel(Model):
         self.households = {}
         self.bins = {}     
 
-        # 3a. Place bins on a 3×3 subgrid within L×L
+        # 3a. Place bins on the grid
         self.bin_positions = bin_positions(self.grid_size, self.num_bins)
         for m, (x_m, y_m) in enumerate(self.bin_positions):
             bin_id = N + m 
@@ -63,7 +63,7 @@ class RecyclingModel(Model):
         num_champ = int(epsilon * N)
         champions = np.random.choice(N, size=num_champ, replace=False)
         for i in champions:
-            P_vals[i] = 2.0  # high preference for eco‐champions
+            P_vals[i] = 2.0  # high intrinsic preference for eco‐champions
 
         # Compute assigned bin and base cost C0 for each household
         for i in range(N):
@@ -78,15 +78,15 @@ class RecyclingModel(Model):
                                     model=self,
                                     P=P_vals[i],
                                     C0=C0_i,
-                                    alpha=1.0 if i in champions else alpha,
+                                    alpha=1.0 if i in champions else alpha, 
                                     bin_id=bin_id)
             self.households[i] = house_agent
             self.schedule.add(house_agent)
 
-            # Place the household on the grid (not on bin cell)
+            # Place the household on the grid
             self.grid.place_agent(house_agent, coords[i])
 
-            # Add to the social network grid at node i
+            # Add to the social network
             self.net.place_agent(house_agent, i)
 
         # 4. Initialize previous rho and deltaC
@@ -103,14 +103,15 @@ class RecyclingModel(Model):
         # 5. DataCollector to track metrics each round
         self.datacollector = DataCollector(
             model_reporters={
-                "Global_Recycle_Rate": lambda m: np.mean([h.s for h in m.households.values()]),
-                "Average_Rho":         lambda m: np.mean([h.rho for h in m.households.values()]),
-                "Overloaded_Bins":     lambda m: sum(1 for b in m.bins.values() if b.Q_m > b.K_m)
+                'Global_Recycle_Rate': lambda m: np.mean([h.s for h in m.households.values()]),
+                'Global_Recycle_Rate_noecochampions': lambda m: np.mean([h.s for h in m.households.values() if h.P < 2.0]),
+                'Average_Rho':         lambda m: np.mean([h.rho for h in m.households.values()]),
+                'Overloaded_Bins':     lambda m: sum(1 for b in m.bins.values() if b.Q_m > b.K_m)
             },
             agent_reporters={
-                "Strategy": lambda a: a.s if isinstance(a, Household) else None,
-                "Rho":      lambda a: a.rho if isinstance(a, Household) else None,
-                "DeltaC":   lambda a: a.deltaC if isinstance(a, Household) else None
+                'Strategy': lambda a: a.s if isinstance(a, Household) else None,
+                'Rho':      lambda a: a.rho if isinstance(a, Household) else None,
+                'DeltaC':   lambda a: a.deltaC if isinstance(a, Household) else None
             }
         )
 
@@ -121,13 +122,13 @@ class RecyclingModel(Model):
         for bin_agent in self.bins.values():
             bin_agent.Q_m = 0
 
-        # 2.
+        # 2. Advance all agents
         self.schedule.step()
 
         # 3. Update surcharges and prepare for next round
         bin_ids = np.array([agent.bin_id for agent in self.households.values()], dtype=np.int32)
-        Qm      = np.array([b.Q_m    for b in self.bins.values()],        dtype=np.int32)
-        Km      = np.array([b.K_m    for b in self.bins.values()],        dtype=np.int32)
+        Qm = np.array([b.Q_m    for b in self.bins.values()],        dtype=np.int32)
+        Km = np.array([b.K_m    for b in self.bins.values()],        dtype=np.int32)
 
         deltas = compute_deltas(bin_ids, Qm, Km, self.delta)
 
@@ -135,5 +136,6 @@ class RecyclingModel(Model):
             # Realized rho was set in agent.rho during advance()
             # Surcharge for next period:
             agent.deltaC = dC
+
         # 4. Collect data
         self.datacollector.collect(self)
