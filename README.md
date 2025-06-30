@@ -28,7 +28,7 @@ Files and folders description:
     → Contains results for sensitivity analysis for replotting without having to run the SA again
 
 ### figures:
-    → Contains every figure and animation generated through any of the code
+    → Contains every figure and animation generated through any of the code (other than the notebooks)
 
 ### drafts_and_notebooks:
     → Contains the notebooks used to test the model, generate animations and investigate emergence
